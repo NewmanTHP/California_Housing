@@ -5,6 +5,10 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import geopandas as gpd
 import geoplot as gplt
+from sklearn.model_selection import cross_val_score
+from sklearn.gaussian_process.kernels import Matern, RationalQuadratic, ExpSineSquared
+from sklearn.gaussian_process import GaussianProcessRegressor
+
 
 sns.set(style="whitegrid")
 
@@ -55,7 +59,7 @@ def pair_plots(df):
 
 
 # defining a simple plot function, input list containing features of names found in dataframe
-def plotTwo(df,lst):
+def california_plot(df,lst):
 
     # load california from module, common for all plots
     cali = gpd.read_file(gplt.datasets.get_path('california_congressional_districts'))
@@ -77,3 +81,42 @@ def plotTwo(df,lst):
 
     plt.tight_layout()
     plt.subplots_adjust(wspace=-0.5)
+
+
+
+def gaussian_process_cross_validation(df, target_column, kernel_type='RBF', sample_fraction=0.01, cv=5, seed=303):
+
+    # Optimize data types
+    df = df.astype({col: 'float32' for col in df.select_dtypes(include=['float64']).columns})
+    
+    # Use a smaller subset of the data
+    df_sampled = df.sample(frac=sample_fraction, random_state=seed)
+    
+    X = df_sampled.drop(columns=target_column)  # Explanatory variables
+    y = df_sampled[target_column]               # Response variable
+
+    # Define the kernel based on the kernel_type parameter
+    if kernel_type == 'RBF':
+        kernel = RBF(1.0, (1e-4, 1e1))
+    elif kernel_type == 'Matern':
+        kernel = Matern(length_scale=1.0, nu=1.5)
+    elif kernel_type == 'RationalQuadratic':
+        kernel = RationalQuadratic(length_scale=1.0, alpha=1.0)
+    elif kernel_type == 'Exponential':
+        kernel = ExpSineSquared(length_scale=1.0, periodicity=3.0)
+    else:
+        raise ValueError("Unsupported kernel type")
+
+    # Create Gaussian Process model
+    gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=5, random_state=seed)
+    
+    # Perform cross-validation
+    scores = cross_val_score(gp, X, y, cv=cv, scoring='neg_root_mean_squared_error')
+
+    # Calculate the root mean squared error
+    rmse_scores = -scores
+    
+    # Return the mean and standard deviation of the scores
+    print(f"RMSE Scores: {rmse_scores}")
+    print(f"Mean: {np.mean(rmse_scores)}")
+    print(f"Std: {np.std(rmse_scores)}")
